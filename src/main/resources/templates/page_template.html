@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title th:text="${title} ?: 'Slipstream Page'">Notion-like Editor</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  #editor-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+  .block {
+    position: relative;
+    margin-bottom: 5px;
+    transition: background-color 0.1s;
+  }
+  .block:hover {
+    background-color: rgba(55, 53, 47, 0.08);
+    border-radius: 3px;
+  }
+  .block-content {
+    width: 100%;
+    outline: none;
+    padding: 3px 2px;
+    min-height: 30px;
+    white-space: pre-wrap;
+  }
+  .block-content:empty:before {
+    content: 'Type / for commands...';
+    color: #888;
+    opacity: 0.5;
+  }
+  .block-content.hidden {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .markdown-rendered {
+    width: 100%;
+    padding: 3px 2px;
+    cursor: text;
+    min-height: 30px;
+  }
+  .markdown-rendered img {
+    max-width: 100%;
+    height: auto;
+  }
+  .block-placeholder {
+    position: absolute;
+    left: -30px;
+    color: #888;
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .block:hover .block-placeholder {
+    opacity: 0.5;
+  }
+  .block.active .block-placeholder {
+    opacity: 1;
+  }
+  .command-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 10;
+    min-width: 200px;
+    border-radius: 4px;
+    display: none;
+    overflow: hidden;
+  }
+  .command-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s;
+  }
+  .command-item:hover {
+    background-color: #f0f0f0;
+  }
+  .command-item-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #888;
+  }
+  .command-item-text {
+    display: flex;
+    flex-direction: column;
+  }
+  .command-item-title {
+    font-weight: 500;
+  }
+  .command-item-description {
+    font-size: 12px;
+    color: #888;
+  }
+  .code-block {
+    background-color: rgba(135, 131, 120, 0.15);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    padding: 16px;
+    border-radius: 4px;
+    tab-size: 2;
+  }
+  .markdown-rendered.code-block pre {
+    margin: 0;
+  }
+  .markdown-rendered.code-block code {
+    background: transparent;
+    padding: 0;
+  }
+  .todo-item {
+    display: flex;
+    align-items: flex-start;
+    margin: 0;
+    padding: 0;
+  }
+  .todo-checkbox {
+    margin-right: 8px;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .heading-1 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    margin-top: 32px;
+    margin-bottom: 4px;
+  }
+  .heading-2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 24px;
+    margin-bottom: 4px;
+  }
+  .quote-block {
+    border-left: 3px solid rgba(55, 53, 47, 0.16);
+    padding-left: 14px;
+    font-style: italic;
+    color: rgba(55, 53, 47, 0.8);
+  }
+  .markdown-rendered h1, .markdown-rendered h2 {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .markdown-rendered h1 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    margin-top: 32px;
+    margin-bottom: 4px;
+  }
+  .markdown-rendered h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 24px;
+    margin-bottom: 4px;
+  }
+  .markdown-rendered ul {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 24px;
+  }
+  .markdown-rendered blockquote {
+    margin: 0;
+    padding-left: 14px;
+    border-left: 3px solid rgba(55, 53, 47, 0.16);
+    color: rgba(55, 53, 47, 0.8);
+  }
+  .markdown-rendered pre {
+    background-color: rgba(135, 131, 120, 0.15);
+    padding: 16px;
+    border-radius: 4px;
+    margin: 0;
+  }
+  .markdown-rendered code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    background-color: rgba(135, 131, 120, 0.15);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 85%;
+  }
+  .markdown-rendered pre > code {
+    background-color: transparent;
+    padding: 0;
+  }
+  .markdown-rendered strong {
+    font-weight: 600;
+  }
+  .markdown-rendered em {
+    font-style: italic;
+  }
+  .markdown-rendered p {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .markdown-rendered input[type="checkbox"] {
+    margin-right: 6px;
+  }
+  #presence-icons {
+    position: absolute;
+    top: 10px;
+    right: 120px;
+    display: flex;
+    gap: 5px;
+  }
+  .presence-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background-color: #ccc;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    border: 1px solid white;
+    box-shadow: 0 0 3px rgba(0,0,0,0.3);
+    cursor: default;
+  }
+  #share-button {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    padding: 8px 15px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  #share-button:hover {
+    background-color: #0056b3;
+  }
+  #dashboardbtn
+  {
+    position: absolute;
+    top: 10px;
+    right: 100px;
+    padding: 8px 15px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.4);
+    padding-top: 60px;
+  }
+  .modal-content {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 500px;
+    border-radius: 5px;
+  }
+  .close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+  }
+  .close-button:hover,
+  .close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  #share-email-input { width: calc(100% - 130px); margin-right: 5px; }
+  #share-access-select { width: 120px; margin-right: 5px; }
+  #add-share-button { width: auto; }
+  #shared-users-list { list-style: none; padding: 0; margin-top: 15px; }
+  #shared-users-list li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #eee; }
+  .remove-share-button { background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+  .block[data-subpage-id] {
+  }
+  .block[data-subpage-id] .block-content {
+  }
+  #save-status {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8rem;
+    color: #888;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background-color: rgba(240, 240, 240, 0.8);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+  }
+  #save-status.visible {
+    opacity: 1;
+  }
+</style>
+
+<body>
+  <div id="presence-icons">
+  </div>
+  <form th:action="@{/export/{id}(id=${pageId})}" method="get" target="_blank">
+    <button type="submit" class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-900" style="top:10px; left: 20px; position: absolute;">
+      Export
+    </button>
+  </form>
+
+  <button id="dashboardbtn" onclick="window.location.href='/dashboard'">
+    Dashboard
+  </button>
+
+  <button id="share-button" th:if="${canEdit}">Share</button>
+
+  <div id="save-status"></div>
+
+  <div id="editor-container">
+    <div id="editor">
+    </div>
+  </div>
+
+  <div id="command-menu" class="command-menu">
+    <div class="command-item" data-type="h1">
+      <div class="command-item-icon">H1</div>
+      <div class="command-item-text">
+        <div class="command-item-title">Heading 1</div>
+        <div class="command-item-description">Big section heading</div>
+      </div>
+    </div>
+    <div class="command-item" data-type="h2">
+      <div class="command-item-icon">H2</div>
+      <div class="command-item-text">
+        <div class="command-item-title">Heading 2</div>
+        <div class="command-item-description">Medium section heading</div>
+      </div>
+    </div>
+    <div class="command-item" data-type="todo">
+      <div class="command-item-icon">☐</div>
+      <div class="command-item-text">
+        <div class="command-item-title">To-do list</div>
+        <div class="command-item-description">Track tasks with a to-do list</div>
+      </div>
+    </div>
+    <div class="command-item" data-type="code">
+      <div class="command-item-icon">⌨️</div>
+      <div class="command-item-text">
+        <div class="command-item-title">Code</div>
+        <div class="command-item-description">Add code with syntax highlighting</div>
+      </div>
+    </div>
+    <div class="command-item" data-type="quote">
+      <div class="command-item-icon">❝</div>
+      <div class="command-item-text">
+        <div class="command-item-title">Quote</div>
+        <div class="command-item-description">Capture a quote</div>
+      </div>
+    </div>
+    <div class="command-item" data-type="bullet">
+      <div class="command-item-icon">•</div>
+      <div class="command-item-text">
+        <div class="command-item-title">Bullet List</div>
+        <div class="command-item-description">Create a simple bullet list</div>
+      </div>
+    </div>
+    <div class="command-item" data-type="page">
+      <div class="command-item-icon">📄</div>
+      <div class="command-item-text">
+        <div class="command-item-title">New Page</div>
+        <div class="command-item-description">Create a new linked page</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="share-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-button" onclick="closeShareModal()">&times;</span>
+      <h2>Share Page: <span th:text="${title}"></span></h2>
+
+      <div style="margin-bottom: 20px;">
+        <h4>Publish to Web</h4>
+        <label>
+          <input type="checkbox" id="publish-checkbox" onchange="togglePublish()">
+          <span id="publish-status-text">Make page public</span>
+        </label>
+        <div id="public-link-container" style="display: none; margin-top: 5px;">
+          Public Link: <a id="public-link" href="#" target="_blank"></a>
+        </div>
+      </div>
+
+      <div>
+        <h4>Share with People</h4>
+        <div style="display: flex; margin-bottom: 10px;">
+          <input type="email" id="share-email-input" placeholder="Enter email address">
+          <select id="share-access-select">
+            <option value="view">Can view</option>
+            <option value="edit">Can edit</option>
+          </select>
+          <button id="add-share-button" onclick="addShare()">Share</button>
+        </div>
+        <ul id="shared-users-list">
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script th:inline="javascript">
+    window.PAGE_ID = /*[[${pageId}]]*/ null;
+    window.PAGE_TITLE = /*[[${title}]]*/ "Untitled";
+    window.PAGE_CONTENT = /*[[${content}]]*/ "";
+    window.IS_PUBLISHED = /*[[${isPublished}]]*/ false;
+    window.SHARING_INFO = /*[[${sharingInfo}]]*/ {};
+    window.CAN_EDIT = /*[[${canEdit}]]*/ false;
+    window.PAGE_OWNER = /*[[${owner}]]*/ null;
+    window.CURRENT_USER_EMAIL = /*[[${currentUserEmail}]]*/ null;
+
+    console.log("Page Data Received:", {
+        pageId: window.PAGE_ID,
+        title: window.PAGE_TITLE,
+        isPublished: window.IS_PUBLISHED,
+        canEdit: window.CAN_EDIT,
+        owner: window.PAGE_OWNER,
+        sharingInfo: window.SHARING_INFO
+    });
+  /*]]>*/
+</script>
+
+  <script>
+    async function fetchWithAuth(url, options = {}) {
+        const token = localStorage.getItem('firebaseIdToken');
+        const defaultHeaders = {
+            'Content-Type': 'application/json',
+        };
+        if (token) {
+            defaultHeaders['Authorization'] = `Bearer ${token}`;
+        }
+
+        const fetchOptions = {
+            ...options,
+            headers: {
+                ...defaultHeaders,
+                ...options.headers,
+            },
+        };
+
+        const response = await fetch(url, fetchOptions);
+
+        if (response.status === 401 || response.status === 403) {
+             console.error(`Authentication/Authorization error (${response.status}) for ${url}. Redirecting or showing error.`);
+             alert(`Error: Access denied (${response.status}). Please ensure you are logged in and have permission.`);
+             throw new Error(`Authentication required (status ${response.status})`);
+        }
+
+        return response;
+    }
+  </script>
+
+  <script>
+    let stompClient = null;
+
+    function connectWebSocket() {
+        const socket = new SockJS('/ws');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function (frame) {
+            console.log('Connected to WebSocket: ' + frame);
+
+            const childDeleteSubUrl = `/topic/pages/${window.PAGE_ID}/children/deleted`;
+            console.log("Subscribing to child deletions:", childDeleteSubUrl);
+            stompClient.subscribe(childDeleteSubUrl, function (message) {
+                const deletedChildId = message.body;
+                console.log(`[WebSocket] Received child deletion message for ID: ${deletedChildId}`);
+                handleChildDeletion(deletedChildId);
+            });
+
+            const pageUpdateSubUrl = `/topic/pages/${window.PAGE_ID}`;
+            console.log("Subscribing to page updates:", pageUpdateSubUrl);
+            stompClient.subscribe(pageUpdateSubUrl, function (message) {
+                 try {
+                    const updateData = JSON.parse(message.body);
+                    console.log(`[WebSocket] Received page update message:`, updateData);
+                    handlePageUpdate(updateData);
+                 } catch (e) {
+                    console.error("Error parsing page update message:", e, message.body);
+                 }
+            });
+
+        }, function(error) {
+            console.error('STOMP error: ' + error);
+            setTimeout(connectWebSocket, 5000);
+        });
+
+        socket.onclose = function() {
+            console.log('WebSocket connection closed. Attempting to reconnect...');
+            stompClient = null;
+            setTimeout(connectWebSocket, 5000);
+        };
+    }
+
+    function handleChildDeletion(deletedChildId) {
+        console.log(`[handleChildDeletion] Attempting to remove block for child ID: ${deletedChildId}`);
+        if (!window.editor) {
+            console.error("[handleChildDeletion] Editor not initialized, cannot remove block.");
+            return;
+        }
+        const blockSelector = `.block[data-subpage-id='${deletedChildId}']`;
+        const blockToRemove = document.querySelector(blockSelector);
+
+        if (blockToRemove) {
+            console.log(`[handleChildDeletion] Found block element, attempting deletion:`, blockToRemove);
+            window.editor.deleteBlock(blockToRemove);
+
+            setTimeout(() => {
+                const blockStillExists = document.querySelector(blockSelector);
+                if (blockStillExists) {
+                    console.error(`[handleChildDeletion] Verification FAILED: Block ${deletedChildId} still exists in DOM after delete attempt.`);
+                } else {
+                    console.log(`[handleChildDeletion] Verification PASSED: Block ${deletedChildId} successfully removed from DOM.`);
+                }
+            }, 100);
+
+        } else {
+            console.warn(`[handleChildDeletion] Block for deleted child ${deletedChildId} not found in the current view.`);
+        }
+    }
+
+    function handlePageUpdate(updateData) {
+        console.log("[handlePageUpdate] Processing update:", updateData);
+
+        let needsReload = false;
+
+        if (updateData.title && updateData.title !== window.PAGE_TITLE) {
+            console.log(`[handlePageUpdate] Title changed from "${window.PAGE_TITLE}" to "${updateData.title}"`);
+            window.PAGE_TITLE = updateData.title;
+            document.title = updateData.title;
+            const titleBlockContent = document.querySelector('#editor .block .block-content.text-3xl');
+            if (titleBlockContent && titleBlockContent.textContent !== updateData.title) {
+                 if (document.activeElement !== titleBlockContent) {
+                    titleBlockContent.textContent = updateData.title;
+                    const renderedTitle = titleBlockContent.nextElementSibling;
+                    if (renderedTitle && renderedTitle.classList.contains('markdown-rendered')) {
+                        renderedTitle.innerHTML = window.editor.converter.makeHtml(updateData.title);
+                    }
+                 } else {
+                     console.log("[handlePageUpdate] Title block is focused, skipping DOM update to avoid disruption.");
+                 }
+            }
+        }
+
+        if (updateData.content !== undefined && updateData.content !== window.PAGE_CONTENT) {
+             console.log("[handlePageUpdate] Content changed, scheduling editor reload.");
+             window.PAGE_CONTENT = updateData.content;
+             needsReload = true;
+        }
+
+        if (updateData.sharingInfo) {
+            window.SHARING_INFO = updateData.sharingInfo;
+            const shareModal = document.getElementById('share-modal');
+            if (shareModal && shareModal.style.display === 'block') {
+                console.log("[handlePageUpdate] Refreshing open share modal.");
+                populateShareModal();
+            }
+        }
+        if (updateData.isPublished !== undefined && updateData.isPublished !== window.IS_PUBLISHED) {
+            window.IS_PUBLISHED = updateData.isPublished;
+            const shareModal = document.getElementById('share-modal');
+            if (shareModal && shareModal.style.display === 'block') {
+                console.log("[handlePageUpdate] Refreshing open share modal due to publish status change.");
+                populateShareModal();
+            }
+        }
+
+        const activeElementInsideEditor = document.activeElement && document.activeElement.closest('#editor');
+
+        if (needsReload && window.editor && !activeElementInsideEditor) {
+            console.log("[handlePageUpdate] Reloading editor content (active element is outside editor)...");
+            window.editor.initializeEditor();
+            console.log("[handlePageUpdate] Editor content reloaded.");
+        } else if (needsReload && activeElementInsideEditor) {
+            console.log("[handlePageUpdate] Content changed, but skipping reload because an element inside the editor is focused.");
+        } else if (needsReload) {
+             console.warn("[handlePageUpdate] Content changed but editor instance not found.");
+        }
+    }
+
+    class Slipstream {
+      constructor(container) {
+        this.container = container;
+        this.converter = new showdown.Converter({
+          tables: true,
+          tasklists: true,
+          strikethrough: true,
+          literalMidWordUnderscores: true,
+          simpleLineBreaks: true
+        });
+        this.commandMenu = document.getElementById('command-menu');
+        this.activeBlock = null;
+        this.isInEditMode = true;
+        this.blockTypes = new Map();
+        this.saveTimeout = null;
+        this.debounceDelay = 1500;
+        this.saveStatusElement = document.getElementById('save-status');
+        this.clearStatusTimeout = null;
+
+        this.initializeEditor();
+        this.setupEventListeners();
+      }
+
+      initializeEditor() {
+        const pageTitle = window.PAGE_TITLE;
+        const pageContent = window.PAGE_CONTENT;
+
+        this.container.innerHTML = '';
+
+        if (!window.PAGE_ID) {
+            console.error("Page ID is missing. Cannot initialize editor correctly.");
+            this.container.innerHTML = '<p style="color: red;">Error: Page data could not be loaded.</p>';
+            document.getElementById('share-button')?.remove();
+            return;
+        }
+
+        if (pageTitle && pageTitle !== "Untitled") {
+            this.addTitleBlock(pageTitle);
+        }
+
+        if (pageContent) {
+            this.loadContentFromMarkdown(pageContent);
+        } else if (!pageTitle || pageTitle === "Untitled") {
+            const initialBlock = this.addBlock();
+            this.switchToEditMode(initialBlock);
+        }
+
+        if (window.CAN_EDIT) {
+            console.log("Auto-save enabled.");
+        } else {
+            this.container.querySelectorAll('[contenteditable="true"]').forEach(el => {
+                el.setAttribute('contenteditable', 'false');
+            });
+            this.container.querySelectorAll('.block-content:empty:before').forEach(el => {
+                el.style.display = 'none';
+            });
+        }
+      }
+
+      addTitleBlock(title) {
+        const titleBlock = document.createElement('div');
+        titleBlock.className = 'block relative mb-6';
+        titleBlock.innerHTML = `
+          <div class="block-placeholder">📄</div>
+          <div class="block-content text-3xl font-bold" contenteditable="true">${title}</div>
+          <div class="markdown-rendered prose text-3xl font-bold hidden"></div>
+        `;
+
+        this.container.appendChild(titleBlock);
+
+        this.setupBlockEventListeners(titleBlock);
+      }
+
+      loadContentFromMarkdown(markdown) {
+        const blocks = markdown.split(/\n\n+/);
+        const subPageRegex = /\[📄\s*(.*?)]\(\/view\/pages\/(page_[a-f0-9-]+)\)/;
+
+        blocks.forEach(blockContent => {
+          if (blockContent.trim()) {
+            const match = blockContent.trim().match(subPageRegex);
+            let block;
+            if (match && match[0] === blockContent.trim()) {
+              const title = match[1];
+              const id = match[2];
+              block = this.addBlock(null); 
+              block.dataset.subpageId = id; 
+              block.dataset.subpageTitle = title; 
+              const content = block.querySelector('.block-content');
+              content.textContent = blockContent; 
+              const placeholder = block.querySelector('.block-placeholder');
+              placeholder.innerHTML = `<a href="/view/pages/${id}" title="Go to page: ${title}">📄</a>`; 
+              
+              console.log(`[loadContent] Identified subpage link: ID=${id}, Title=${title}. Block ID: ${block.id}`);
+              this.switchToRenderMode(block); 
+            } else {
+              block = this.addBlock(null);
+              const content = block.querySelector('.block-content');
+              content.textContent = blockContent;
+              this.updateBlockType(block); 
+              this.switchToRenderMode(block); 
+            }
+          }
+        });
+      }
+
+      setupEventListeners() {
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            this.hideCommandMenu();
+          }
+        });
+
+        this.commandMenu.addEventListener('click', (e) => {
+          const item = e.target.closest('.command-item');
+          if (item) {
+            this.applyCommand(item.dataset.type);
+          }
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!this.commandMenu.contains(e.target) && !e.target.closest('.block-content')) {
+            this.hideCommandMenu();
+          }
+        });
+
+        this.container.addEventListener('click', (e) => {
+            if (e.target === this.container) {
+                const lastBlock = this.container.lastElementChild;
+                if (lastBlock && lastBlock.classList.contains('block') && lastBlock.dataset.subpageId) {
+                    console.log("Clicked empty space below a subpage block. Adding new block.");
+                    const newBlock = this.addBlock(null);
+                    this.switchToEditMode(newBlock);
+                    console.log("Attempted focus via switchToEditMode for block added below subpage.");
+                } else if (!lastBlock) {
+                    console.log("Clicked empty editor. Adding initial block.");
+                    const initialBlock = this.addBlock(null);
+                    this.switchToEditMode(initialBlock);
+                }
+            }
+        });
+      }
+
+      setupBlockEventListeners(block) {
+        const content = block.querySelector('.block-content');
+        const renderedContent = block.querySelector('.markdown-rendered');
+
+        content.addEventListener('input', () => {
+          this.handleContentChange(block);
+        });
+
+        content.addEventListener('keydown', (e) => {
+          this.handleKeyDown(e, block);
+        });
+
+        content.addEventListener('focus', () => {
+          this.setActiveBlock(block);
+        });
+
+        if (renderedContent) {
+          renderedContent.addEventListener('click', (e) => {
+            this.switchToEditMode(block);
+          });
+        }
+
+        content.addEventListener('paste', (e) => {
+          this.handlePaste(e, block);
+        });
+
+        content.addEventListener('blur', () => {
+          if (!this.commandMenu.contains(document.activeElement)) {
+            this.switchToRenderMode(block);
+          }
+        });
+      }
+
+      setActiveBlock(block) {
+        const allBlocks = this.container.querySelectorAll('.block');
+        allBlocks.forEach(b => b.classList.remove('active'));
+        block.classList.add('active');
+        this.activeBlock = block;
+      }
+
+      handlePaste(e, block) {
+        const target = e.target;
+        if (!target.classList.contains('block-content')) return;
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf("image") !== -1) {
+            const blob = items[i].getAsFile();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const content = block.querySelector('.block-content');
+              const imageMarkdown = `![Pasted Image](${event.target.result})`;
+              content.textContent += imageMarkdown;
+              this.handleContentChange(block);
+            };
+            reader.readAsDataURL(blob);
+            e.preventDefault();
+            break;
+          }
+        }
+      }
+
+      async saveDocument() {
+        if (!window.CAN_EDIT) {
+          console.log("Save prevented: User does not have edit permission.");
+          return;
+        }
+
+        const pageId = window.PAGE_ID;
+
+        if (!pageId) {
+          console.error('Auto-save failed: Could not determine page ID.');
+          this.updateSaveStatus("Save failed (no ID)", true);
+          return;
+        }
+
+        this.updateSaveStatus("Saving...");
+        console.log(`Auto-saving page ${pageId}...`);
+
+        const blocks = Array.from(this.container.querySelectorAll('.block'));
+        let title = window.PAGE_TITLE;
+        let contentBlocks = blocks;
+
+        if (blocks.length > 0) {
+            const firstBlockContent = blocks[0].querySelector('.block-content');
+            if (firstBlockContent && (firstBlockContent.classList.contains('text-3xl') || blocks.length === 1)) {
+                title = firstBlockContent.textContent.trim() || 'Untitled';
+                contentBlocks = blocks.slice(1);
+                console.log("Extracted Title:", title);
+            } else {
+                 console.log("First block doesn't seem like a title, using original title:", title);
+            }
+        } else {
+             console.log("No blocks found, using original title:", title);
+        }
+
+
+        const documentMarkdown = contentBlocks.map(block => {
+          const content = block.querySelector('.block-content');
+          return content ? content.textContent : '';
+        }).filter(text => text.trim() !== '').join('\n\n');
+
+        console.log("Extracted Content Markdown:", documentMarkdown);
+
+
+        try {
+            const response = await fetchWithAuth(`/api/pages/${encodeURIComponent(pageId)}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: title,
+                    content: documentMarkdown
+                })
+            });
+
+            const data = await response.text();
+
+            if (!response.ok) {
+                console.error(`Auto-save failed for page ${pageId}. Status: ${response.status}, Response: ${data}`);
+                this.updateSaveStatus("Save failed", true);
+            } else {
+                console.log(`Auto-save successful for page ${pageId}. Server response: ${data}`);
+                this.updateSaveStatus("Saved", true);
+                if (document.title !== title) {
+                    document.title = title;
+                    window.PAGE_TITLE = title;
+                }
+            }
+        } catch (error) {
+            console.error(`Auto-save fetch error for page ${pageId}:`, error);
+            this.updateSaveStatus("Save failed", true);
+        }
+      }
+
+      switchToEditMode(block) {
+        if (!block) {
+            console.warn("[switchToEditMode] Called with null block.");
+            return;
+        }
+        const content = block.querySelector('.block-content');
+        const renderedContent = block.querySelector('.markdown-rendered');
+
+        if (!content) {
+            console.error("[switchToEditMode] Block content element not found for block:", block);
+            return;
+        }
+
+        content.classList.remove('hidden');
+        if (renderedContent) {
+          renderedContent.classList.add('hidden');
+        }
+        this.setActiveBlock(block);
+
+        setTimeout(() => {
+            content.focus();
+            this.placeCursorAtEnd(content);
+            console.log(`[switchToEditMode] Switched block ${block.id || '(no id)'} to edit mode and focused.`);
+        }, 0);
+      }
+
+      switchToRenderMode(block) {
+        const content = block.querySelector('.block-content');
+        const renderedContent = block.querySelector('.markdown-rendered');
+        const blockIdForLog = block.id || '(no id)';
+
+        if (document.activeElement === content) {
+            console.log(`[switchToRenderMode] Skipping render for focused block: ${blockIdForLog}`);
+            return;
+        }
+
+        if (!content || !renderedContent) {
+            console.error(`[switchToRenderMode] Missing content or renderedContent element for block ${blockIdForLog}`);
+            return;
+        }
+
+        if (block.dataset.subpageId) {
+            console.log(`[switchToRenderMode] Block ${blockIdForLog} IS a subpage link.`);
+            const title = block.dataset.subpageTitle || 'Untitled Page';
+            const id = block.dataset.subpageId;
+            const linkHtml = `<a href="/view/pages/${id}" class="text-blue-600 hover:underline">📄 ${title}</a>`;
+            console.log(`[switchToRenderMode] Setting rendered HTML for subpage ${blockIdForLog}: ${linkHtml}`);
+            renderedContent.innerHTML = linkHtml;
+            
+            console.log(`[switchToRenderMode] Hiding content, showing rendered for subpage ${blockIdForLog}`);
+            content.classList.add('hidden');
+            renderedContent.classList.remove('hidden');
+        } 
+        else {
+            const hasContent = content.textContent.trim();
+            console.log(`[switchToRenderMode] Block ${blockIdForLog} is normal markdown. Has content? ${!!hasContent}`);
+            if (hasContent) {
+                console.log(`[switchToRenderMode] Converting normal markdown for ${blockIdForLog}...`);
+                renderedContent.innerHTML = this.converter.makeHtml(content.textContent);
+                if (content.classList.contains('code-block')) {
+                    renderedContent.classList.add('code-block');
+                }
+                console.log(`[switchToRenderMode] Hiding content, showing rendered for normal block ${blockIdForLog}`);
+                content.classList.add('hidden');
+                renderedContent.classList.remove('hidden');
+            } else {
+                console.log(`[switchToRenderMode] Block ${blockIdForLog} is normal but empty. Hiding rendered, showing content.`);
+                renderedContent.innerHTML = '';
+                renderedContent.classList.add('hidden');
+                content.classList.remove('hidden'); 
+            }
+        }
+      }
+
+      placeCursorAtEnd(element) {
+        const range = document.createRange();
+        const selection = window.getSelection();
+        if (element.childNodes.length > 0) {
+          const lastNode = element.childNodes[element.childNodes.length - 1];
+          range.setStart(lastNode, lastNode.length || 0);
+        } else {
+          range.setStart(element, 0);
+        }
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      handleContentChange(block) {
+        const content = block.querySelector('.block-content');
+        const text = content.textContent;
+        if (text === '/') {
+          this.showCommandMenu(block);
+        } else if (!text.startsWith('/')) {
+          this.hideCommandMenu();
+          this.updateBlockType(block);
+        }
+
+        if (window.CAN_EDIT) {
+            clearTimeout(this.saveTimeout);
+            clearTimeout(this.clearStatusTimeout);
+            this.updateSaveStatus("Saving...");
+            this.saveTimeout = setTimeout(() => {
+                console.log("Debounce timer expired, triggering auto-save...");
+                this.saveDocument();
+            }, this.debounceDelay);
+        }
+      }
+
+      updateBlockType(block) {
+        if (block.dataset.subpageId) {
+            console.log(`[updateBlockType] Skipping update for subpage link block ${block.id}`);
+            return; 
+        }
+
+        const content = block.querySelector('.block-content');
+        const placeholder = block.querySelector('.block-placeholder');
+        const text = content.textContent;
+        
+        content.className = 'block-content'; 
+        placeholder.textContent = '✦'; 
+
+        if (text.startsWith('# ')) {
+          content.classList.add('heading-1');
+          placeholder.textContent = 'H1';
+          this.blockTypes.set(block.id || this.assignBlockId(block), 'h1');
+        } else if (text.startsWith('## ')) {
+          content.classList.add('heading-2');
+          placeholder.textContent = 'H2';
+          this.blockTypes.set(block.id || this.assignBlockId(block), 'h2');
+        } else if (text.startsWith('- [ ] ') || text.startsWith('- [x] ')) {
+          placeholder.textContent = '☐';
+          this.blockTypes.set(block.id || this.assignBlockId(block), 'todo');
+        } else if (text.startsWith('```') && text.endsWith('```')) {
+          content.classList.add('code-block');
+          placeholder.textContent = '⌨️';
+          this.blockTypes.set(block.id || this.assignBlockId(block), 'code');
+        } else if (text.startsWith('> ')) {
+          content.classList.add('quote-block');
+          placeholder.textContent = '❝';
+          this.blockTypes.set(block.id || this.assignBlockId(block), 'quote');
+        } else if (text.startsWith('- ')) {
+          placeholder.textContent = '•';
+          this.blockTypes.set(block.id || this.assignBlockId(block), 'bullet');
+        } else {
+          this.blockTypes.delete(block.id || ''); 
+        }
+      }
+
+      assignBlockId(block) {
+        const id = 'block-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        block.id = id;
+        return id;
+      }
+
+      handleKeyDown(e, block) {
+        if (!block) {
+            console.warn("handleKeyDown called without a block.");
+            return;
+        }
+
+        if (e.key === '/') {
+          const content = block.querySelector('.block-content');
+          if (content.textContent === '') {
+            this.showCommandMenu(block);
+            return;
+          }
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          let newBlock;
+
+          if (block.dataset.subpageId) {
+              console.log("Enter pressed on subpage block. Adding new block after.");
+              newBlock = this.addBlock(block);
+              this.switchToEditMode(newBlock);
+              console.log("Attempted focus via switchToEditMode for block added after subpage.");
+              return;
+          }
+          const content = block.querySelector('.block-content');
+          const text = content.textContent;
+          const blockType = this.blockTypes.get(block.id || '');
+          if (blockType === 'h1' || blockType === 'h2') {
+            newBlock = this.addBlock(block);
+            this.switchToEditMode(newBlock);
+            return;
+          }
+          if (text.match(/^- \[(x| )\] /)) {
+            newBlock = this.addBlock(block);
+            const newContent = newBlock.querySelector('.block-content');
+            newContent.textContent = '- [ ] ';
+            this.updateBlockType(newBlock);
+            this.switchToEditMode(newBlock);
+            return;
+          }
+          if (text.startsWith('- ')) {
+            newBlock = this.addBlock(block);
+            const newContent = newBlock.querySelector('.block-content');
+            newContent.textContent = '- ';
+            this.updateBlockType(newBlock);
+            this.switchToEditMode(newBlock);
+            return;
+          }
+          if (content.classList.contains('code-block') && !text.endsWith('```')) {
+            document.execCommand('insertText', false, '\n');
+            return;
+          }
+          newBlock = this.addBlock(block);
+          if (blockType && blockType !== 'h1' && blockType !== 'h2') {
+            const newContent = newBlock.querySelector('.block-content');
+            switch(blockType) {
+              case 'todo':
+                newContent.textContent = '- [ ] ';
+                break;
+              case 'bullet':
+                newContent.textContent = '- ';
+                break;
+              case 'quote':
+                newContent.textContent = '> ';
+                break;
+            }
+            this.updateBlockType(newBlock);
+          }
+          this.switchToEditMode(newBlock);
+          return;
+        }
+        if (e.key === 'Backspace') {
+          const content = block.querySelector('.block-content');
+          if (content.textContent === '' && this.container.children.length > 1) {
+            e.preventDefault();
+            this.deleteBlock(block);
+            return;
+          }
+        }
+        if (e.key === 'Tab' && block.querySelector('.block-content').classList.contains('code-block')) {
+          e.preventDefault();
+          document.execCommand('insertText', false, '    ');
+          return;
+        }
+      }
+
+      showCommandMenu(block) {
+        if (block.dataset.subpageId) {
+            return;
+        }
+        const rect = block.getBoundingClientRect();
+        this.commandMenu.style.display = 'block';
+        this.commandMenu.style.top = `${rect.bottom + window.scrollY}px`;
+        this.commandMenu.style.left = `${rect.left + window.scrollX}px`;
+        this.activeBlock = block;
+      }
+
+      hideCommandMenu() {
+        this.commandMenu.style.display = 'none';
+      }
+
+      applyCommand(type) {
+        if (!this.activeBlock) return;
+        const content = this.activeBlock.querySelector('.block-content');
+        
+        content.textContent = ''; 
+        
+        let prefix = '';
+        if (type === 'page') {
+          this.hideCommandMenu();
+          window.currentBlock = this.activeBlock;
+          createNewPage();
+          return; 
+        }
+        
+        switch(type) {
+          case 'h1':
+            prefix = '# ';
+            content.className = 'block-content heading-1';
+            break;
+          case 'h2':
+            prefix = '## ';
+            content.className = 'block-content heading-2';
+            break;
+          case 'todo':
+            prefix = '- [ ] ';
+            break;
+          case 'code':
+            prefix = '```\n\n```';
+            content.className = 'block-content code-block';
+            break;
+          case 'quote':
+            prefix = '> ';
+            content.className = 'block-content quote-block';
+            break;
+          case 'bullet':
+            prefix = '- ';
+            break;
+        }
+        
+        content.textContent = prefix; 
+        
+        this.updateBlockType(this.activeBlock);
+        this.blockTypes.set(this.activeBlock.id || this.assignBlockId(this.activeBlock), type);
+        content.focus();
+        
+        if (type === 'code') {
+          this.placeCursorAtPosition(content, 4); 
+        } else {
+          this.placeCursorAtPosition(content, prefix.length);
+        }
+        
+        this.hideCommandMenu();
+      }
+
+      placeCursorAtPosition(element, position) {
+        const range = document.createRange();
+        const selection = window.getSelection();
+        if (element.firstChild) {
+          const textNode = element.firstChild;
+          const pos = Math.min(position, textNode.length);
+          range.setStart(textNode, pos);
+        } else {
+          const textNode = document.createTextNode(element.textContent);
+          element.appendChild(textNode);
+          const pos = Math.min(position, textNode.length);
+          range.setStart(textNode, pos);
+        }
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      addBlock(afterBlock = null, subPageId = null, subPageTitle = null) {
+        const block = document.createElement('div');
+        const id = 'block-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        block.id = id;
+        block.className = 'block relative';
+        block.innerHTML = `
+          <div class="block-placeholder"> ✦ </div>
+          <div class="block-content" contenteditable="true"></div>
+          <div class="markdown-rendered prose hidden"></div>
+        `;
+
+        const content = block.querySelector('.block-content');
+
+        if (subPageId) {
+            block.dataset.subpageId = subPageId;
+            block.dataset.subpageTitle = subPageTitle || 'Untitled Page';
+            block.querySelector('.block-placeholder').innerHTML = `<a href="/view/pages/${subPageId}" title="Go to page: ${subPageTitle || 'Untitled Page'}">📄</a>`;
+        }
+
+        if (afterBlock) {
+          if (afterBlock.nextSibling) {
+            this.container.insertBefore(block, afterBlock.nextSibling);
+          } else {
+            this.container.appendChild(block);
+          }
+        } else {
+          this.container.appendChild(block);
+        }
+
+        this.setupBlockEventListeners(block);
+
+        return block;
+      }
+
+      deleteBlock(block) {
+        console.log(`[deleteBlock] Function called for block:`, block);
+        if (!block) {
+            console.warn("[deleteBlock] Attempted to delete a null block.");
+            return;
+        }
+
+        const blockId = block.id || '(no id)';
+        console.log(`[deleteBlock] Attempting to remove block ${blockId}`);
+
+        const previousBlock = block.previousElementSibling;
+        const nextBlock = block.nextElementSibling;
+        this.blockTypes.delete(block.id || '');
+
+        if (this.container.contains(block)) {
+            console.log(`[deleteBlock] About to remove block ${blockId} from DOM.`);
+            try {
+                this.container.removeChild(block);
+                console.log(`[deleteBlock] Successfully removed block ${blockId} from DOM.`);
+            } catch (error) {
+                console.error(`[deleteBlock] Error removing block ${blockId} from DOM:`, error);
+            }
+        } else {
+             console.warn(`[deleteBlock] Attempted to remove block ${blockId} which is not in the container.`);
+        }
+
+        let focused = false;
+        if (previousBlock && !previousBlock.dataset.subpageId) {
+          console.log(`[deleteBlock] Focusing previous editable block: ${previousBlock.id}`);
+          this.switchToEditMode(previousBlock);
+          focused = true;
+        } else if (nextBlock && !nextBlock.dataset.subpageId) {
+          console.log(`[deleteBlock] Previous block unsuitable, focusing next editable block: ${nextBlock.id}`);
+          this.switchToEditMode(nextBlock);
+          focused = true;
+        } else if (this.container.children.length === 0) {
+            console.log("[deleteBlock] No blocks left, adding a new empty one.");
+            const newBlock = this.addBlock();
+            this.switchToEditMode(newBlock);
+            focused = true;
+        } else {
+             const lastEditableBlock = Array.from(this.container.querySelectorAll('.block:not([data-subpage-id])')).pop();
+             if (lastEditableBlock) {
+                 console.log("[deleteBlock] Previous/Next unsuitable, focusing last editable block:", lastEditableBlock.id);
+                 this.switchToEditMode(lastEditableBlock);
+                 focused = true;
+             }
+        }
+
+        if (!focused) {
+             console.log("[deleteBlock] No suitable block found to focus after deletion.");
+        }
+      }
+
+      updateSaveStatus(message, autoClear = false, clearDelay = 2000) {
+          if (!this.saveStatusElement) return;
+
+          this.saveStatusElement.textContent = message;
+          this.saveStatusElement.classList.add('visible');
+
+          clearTimeout(this.clearStatusTimeout);
+
+          if (autoClear) {
+              this.clearStatusTimeout = setTimeout(() => {
+                  this.saveStatusElement.classList.remove('visible');
+              }, clearDelay);
+          }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!window.PAGE_ID) {
+           console.error("Critical Error: Page ID not provided by backend. Aborting page initialization.");
+           document.getElementById('editor-container').innerHTML = '<h1 style="color: red; text-align: center; margin-top: 50px;">Error loading page data.</h1>';
+           return;
+      }
+
+      const editorContainer = document.getElementById('editor');
+      if (editorContainer) {
+          window.editor = new Slipstream(editorContainer);
+      } else {
+          console.error("Editor container not found!");
+      }
+
+      const shareButton = document.getElementById('share-button');
+      if (shareButton) {
+          console.log("Found share button, attaching click listener.");
+          shareButton.addEventListener('click', openShareModal);
+      } else {
+          console.log("Share button not found (possibly due to view-only access).");
+      }
+
+      if (window.PAGE_ID) {
+          connectWebSocket();
+      }
+    });
+
+    async function createNewPage() {
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50';
+      modal.innerHTML = `
+        <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+          <h2 class="text-xl font-bold mb-4">Create New Page</h2>
+          <form id="create-page-form">
+            <div class="mb-4">
+              <label class="block text-sm font-medium mb-1" for="page-title">Page Title:</label>
+              <input class="w-full p-2 border rounded" type="text" id="page-title" name="title" required>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button type="button" id="cancel-page" class="px-4 py-2 bg-gray-200 rounded">Cancel</button>
+              <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded">Create</button>
+            </div>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      setTimeout(() => {
+        document.getElementById('page-title').focus();
+      }, 100);
+      
+      document.getElementById('create-page-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('page-title').value.trim();
+        const parentPageId = window.PAGE_ID;
+        console.log("[createNewPage] Creating new page with parent ID:", parentPageId);
+        if (!title) return;
+
+        if (!window.currentBlock || !window.editor) {
+             console.error("[createNewPage] Error: currentBlock or editor context is missing.");
+             alert("Error: Could not determine where to place the new page link.");
+             const openModal = document.getElementById('create-page-form')?.closest('.fixed');
+             if (openModal && document.body.contains(openModal)) {
+                 document.body.removeChild(openModal);
+             }
+             return;
+        }
+        const targetBlock = window.currentBlock; 
+        const blockIdForLog = targetBlock.id || '(no id)';
+        console.log(`[createNewPage] Target block for link embedding: ${blockIdForLog}`);
+
+        try {
+            const response = await fetchWithAuth('/api/pages', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({
+                    title: title,
+                    content: "", 
+                    parentPageId: parentPageId,
+                    type: 'content' 
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            }
+
+            const newPageId = await response.text(); 
+            console.log("[createNewPage] New page created with ID:", newPageId);
+            
+            const modal = document.getElementById('create-page-form')?.closest('.fixed');
+            if (modal && document.body.contains(modal)) {
+                 document.body.removeChild(modal);
+            }
+
+            console.log(`[createNewPage] Updating block ${blockIdForLog} with new page link:`, newPageId, title);
+            
+            targetBlock.dataset.subpageId = newPageId;
+            targetBlock.dataset.subpageTitle = title;
+
+            const placeholder = targetBlock.querySelector('.block-placeholder');
+            const content = targetBlock.querySelector('.block-content');
+            const renderedContent = targetBlock.querySelector('.markdown-rendered'); 
+
+            if (!placeholder || !content || !renderedContent) {
+                console.error(`[createNewPage] Critical error: Block ${blockIdForLog} is missing essential elements (placeholder, content, or renderedContent).`);
+                alert("Error: Failed to update the block structure for the new page link.");
+                window.currentBlock = null; 
+                return;
+            }
+
+            if (placeholder) {
+                placeholder.innerHTML = `<a href="/view/pages/${newPageId}" title="Go to page: ${title}">📄</a>`;
+                console.log(`[createNewPage] Updated placeholder for ${blockIdForLog}`);
+            }
+
+            if (content) {
+                const markdownLink = `[📄 ${title}](/view/pages/${newPageId})`;
+                content.textContent = markdownLink;
+                content.classList.remove('hidden'); 
+                console.log(`[createNewPage] Set content text for ${blockIdForLog}: ${content.textContent}`); 
+            }
+            
+            window.editor.updateBlockType(targetBlock); 
+            
+            console.log(`[createNewPage] Before switchToRenderMode for ${blockIdForLog}:`);
+            console.log(`  - dataset.subpageId: ${targetBlock.dataset.subpageId}`);
+            console.log(`  - dataset.subpageTitle: ${targetBlock.dataset.subpageTitle}`);
+            console.log(`  - content.textContent: "${content.textContent}"`);
+            console.log(`  - content hidden: ${content.classList.contains('hidden')}`);
+            console.log(`  - renderedContent hidden: ${renderedContent.classList.contains('hidden')}`);
+
+            console.log(`[createNewPage] Calling switchToRenderMode for ${blockIdForLog}`);
+            window.editor.switchToRenderMode(targetBlock);
+            
+            console.log(`[createNewPage] After switchToRenderMode for ${blockIdForLog}:`);
+            console.log(`  - content hidden: ${content.classList.contains('hidden')}`);
+            console.log(`  - renderedContent hidden: ${renderedContent.classList.contains('hidden')}`);
+            console.log(`  - renderedContent.innerHTML: ${renderedContent.innerHTML}`);
+
+            console.log("[createNewPage] Saving parent document after adding subpage link.");
+            await window.editor.saveDocument();
+
+            window.currentBlock = null;
+            console.log("[createNewPage] Block update complete, currentBlock reset.");
+
+            if (confirm(`Page '${title}' created! Do you want to open it now?`)) {
+                window.location.href = `/view/pages/${newPageId}`;
+            }
+        } catch (error) {
+            console.error('[createNewPage] Error creating page or updating block:', error);
+            alert(`An error occurred while creating the page: ${error.message}`);
+            const modal = document.getElementById('create-page-form')?.closest('.fixed');
+            if (modal && document.body.contains(modal)) {
+                document.body.removeChild(modal);
+            }
+            window.currentBlock = null; 
+        }
+      });
+
+      document.getElementById('cancel-page').addEventListener('click', () => {
+        const modal = document.getElementById('create-page-form')?.closest('.fixed');
+        if (modal && document.body.contains(modal)) {
+            document.body.removeChild(modal);
+        }
+        window.currentBlock = null; 
+      });
+    }
+
+    function openShareModal() {
+        console.log("openShareModal called.");
+        const modal = document.getElementById('share-modal');
+        console.log("Modal element:", modal);
+
+        if (!modal) {
+            console.error("Share modal element with ID 'share-modal' not found.");
+            alert("Error: Could not find the share dialog components.");
+            return;
+        }
+
+        if (!window.PAGE_ID) {
+            console.error("Cannot open share modal: window.PAGE_ID is missing or null.");
+            alert("Error: Page information is missing, cannot open share settings.");
+            return;
+        }
+
+        try {
+            console.log("Populating share modal...");
+            populateShareModal();
+            console.log("Setting modal display to 'block'.");
+            modal.style.display = "block";
+            console.log("Share modal should now be visible.");
+        } catch (error) {
+             console.error("Error occurred within openShareModal:", error);
+             alert("An unexpected error occurred while trying to open the share dialog.");
+        }
+    }
+
+    function closeShareModal() {
+        const modal = document.getElementById('share-modal');
+        if (modal) {
+            modal.style.display = "none";
+        }
+    }
+
+    function populateShareModal() {
+        console.log("populateShareModal called.");
+        const publishCheckbox = document.getElementById('publish-checkbox');
+        const publishStatusText = document.getElementById('publish-status-text');
+        const publicLinkContainer = document.getElementById('public-link-container');
+        const publicLink = document.getElementById('public-link');
+        const sharedUsersList = document.getElementById('shared-users-list');
+
+        if (publishCheckbox) publishCheckbox.checked = window.IS_PUBLISHED;
+        if (publishStatusText) publishStatusText.textContent = window.IS_PUBLISHED ? "Page is public" : "Make page public";
+        if (publicLinkContainer) publicLinkContainer.style.display = window.IS_PUBLISHED ? 'block' : 'none';
+        if (publicLink) {
+            const linkUrl = `${window.location.origin}/view/pages/${window.PAGE_ID}`;
+            publicLink.href = linkUrl;
+            publicLink.textContent = linkUrl;
+        }
+        if (sharedUsersList) sharedUsersList.innerHTML = '';
+
+        if (window.SHARING_INFO && sharedUsersList) {
+            console.log("Populating shared users list with:", window.SHARING_INFO);
+            Object.entries(window.SHARING_INFO).forEach(([email, accessLevel]) => {
+                if (email === window.PAGE_OWNER) return;
+
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${email} (${accessLevel})</span>
+                    <button class="remove-share-button" onclick="removeShare('${email}')">Remove</button>
+                `;
+                sharedUsersList.appendChild(li);
+            });
+        } else {
+             console.log("No sharing info or list element found to populate.");
+        }
+    }
+
+    async function togglePublish() {
+        const publishCheckbox = document.getElementById('publish-checkbox');
+        const isPublished = publishCheckbox.checked;
+        const method = isPublished ? 'POST' : 'DELETE';
+        const url = `/api/pages/${window.PAGE_ID}/publish`;
+
+        console.log(`Toggling publish status to ${isPublished} via ${method} ${url}`);
+
+        try {
+            const response = await fetchWithAuth(url, { method: method });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `Failed to ${isPublished ? 'publish' : 'unpublish'} page`);
+            }
+            const data = await response.json();
+            window.IS_PUBLISHED = data.isPublished;
+            console.log("Publish status updated successfully:", window.IS_PUBLISHED);
+            populateShareModal();
+        } catch (error) {
+            console.error("Error toggling publish status:", error);
+            alert(`Error: ${error.message}`);
+            publishCheckbox.checked = !isPublished;
+            populateShareModal();
+        }
+    }
+
+    async function addShare() {
+        const emailInput = document.getElementById('share-email-input');
+        const accessSelect = document.getElementById('share-access-select');
+        const email = emailInput.value.trim();
+        const accessLevel = accessSelect.value;
+
+        if (!email) {
+            alert("Please enter an email address.");
+            return;
+        }
+        if (email === window.PAGE_OWNER) {
+             alert("You cannot share the page with the owner.");
+             return;
+        }
+
+        console.log(`Attempting to share page ${window.PAGE_ID} with ${email} (${accessLevel})`);
+
+        try {
+            const response = await fetchWithAuth(`/api/pages/${window.PAGE_ID}/share`, {
+                method: 'POST',
+                body: JSON.stringify({ userEmail: email, accessLevel: accessLevel })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `Failed to share page`);
+            }
+
+            const updatedSharingInfo = await response.json();
+            window.SHARING_INFO = updatedSharingInfo;
+            console.log("Sharing successful, updated info:", window.SHARING_INFO);
+            emailInput.value = '';
+            populateShareModal();
+
+        } catch (error) {
+            console.error("Error adding share:", error);
+            alert(`Error sharing page: ${error.message}`);
+        }
+    }
+
+    async function removeShare(email) {
+        if (!confirm(`Are you sure you want to remove access for ${email}?`)) {
+            return;
+        }
+
+        console.log(`Attempting to remove share for ${email} from page ${window.PAGE_ID}`);
+
+        try {
+            const response = await fetchWithAuth(`/api/pages/${window.PAGE_ID}/share?userEmail=${encodeURIComponent(email)}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `Failed to remove share`);
+            }
+
+            const updatedSharingInfo = await response.json();
+            window.SHARING_INFO = updatedSharingInfo;
+            console.log("Share removal successful, updated info:", window.SHARING_INFO);
+            populateShareModal();
+
+        } catch (error) {
+            console.error("Error removing share:", error);
+            alert(`Error removing share: ${error.message}`);
+        }
+    }
+  </script>
+
+</body>
+</html>

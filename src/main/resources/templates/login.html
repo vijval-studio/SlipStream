@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Slipstream</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f3f4f6;
+        }
+        .login-container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        #login-button {
+            background-color: #4285F4;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #login-button:hover {
+            background-color: #357ae8;
+        }
+        #error-message {
+            color: red;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1 class="text-2xl font-bold mb-6">Login to Slipstream</h1>
+        <button id="login-button">
+            <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574l6.19,5.238C39.712,35.619,44,29.57,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path>
+            </svg>
+            Login with Google
+        </button>
+        <p id="status-message" class="mt-4 text-gray-600"></p>
+        <p id="error-message" th:if="${param.error}" th:text="${session.SPRING_SECURITY_LAST_EXCEPTION != null ? session.SPRING_SECURITY_LAST_EXCEPTION.message : 'Login failed'}"></p>
+         <p id="logout-message" th:if="${param.logout}" class="text-green-600 mt-4">You have been logged out.</p>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <script>
+        console.log("Login page script loaded.");
+
+        // --- Firebase Configuration ---
+        // Get these values from your Firebase project settings -> Your apps -> Web app -> SDK setup and configuration -> Config
+        const firebaseConfig = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: "",
+            measurementId: ""
+        };
+
+        let app;
+        let auth;
+        let googleProvider;
+
+        try {
+            // Initialize Firebase
+            app = firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            googleProvider = new firebase.auth.GoogleAuthProvider();
+            console.log("Firebase initialized successfully.");
+        } catch (error) {
+             console.error("Firebase initialization failed:", error);
+             const statusMsg = document.getElementById('status-message');
+             if(statusMsg) statusMsg.textContent = "Error initializing Firebase. Check configuration.";
+        }
+
+        // --- Authentication Logic ---
+        const loginButton = document.getElementById('login-button');
+        const errorMessage = document.getElementById('error-message');
+        const statusMessage = document.getElementById('status-message'); // Get status element
+
+        if (loginButton && auth) { // Check if button and auth exist
+            console.log("Attaching click listener to login button.");
+            loginButton.addEventListener('click', () => {
+                console.log("Login button clicked.");
+                if(errorMessage) errorMessage.textContent = ''; // Clear previous errors
+                if(statusMessage) statusMessage.textContent = 'Attempting Google Sign-In...'; // Update status
+                loginButton.disabled = true; // Disable button during process
+
+                auth.signInWithPopup(googleProvider)
+                    .then(async (result) => {
+                        console.log("Google Sign-In successful:", result.user);
+                        if(statusMessage) statusMessage.textContent = 'Sign-in successful. Verifying with backend...';
+                        const user = result.user;
+                        if (user) {
+                            let idToken;
+                            try {
+                                idToken = await user.getIdToken(true); // Get the token
+                                console.log("Obtained ID Token.");
+
+                                // *** Call backend verification endpoint ***
+                                const verifyResponse = await fetch('/api/auth/verify-token', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ idToken: idToken })
+                                });
+
+                                if (!verifyResponse.ok) {
+                                    const errorText = await verifyResponse.text();
+                                    console.error("Backend verification failed:", errorText);
+                                    throw new Error(errorText || `Backend verification failed with status ${verifyResponse.status}`);
+                                }
+
+                                const verifyData = await verifyResponse.json();
+                                console.log("Backend verification successful:", verifyData);
+                                if(statusMessage) statusMessage.textContent = 'Verification successful. Redirecting...';
+
+                                // *** Redirect to dashboard AFTER successful backend verification ***
+                                const urlParams = new URLSearchParams(window.location.search);
+                                // Check if there was a 'continue' param, otherwise default to /dashboard
+                                const continueUrl = urlParams.get('continue') || '/dashboard'; // Default to /dashboard
+                                console.log("Redirecting to:", continueUrl);
+                                window.location.href = continueUrl; // Redirect
+
+                            } catch (error) {
+                                 console.error("Error during token retrieval or backend verification:", error);
+                                 if(errorMessage) errorMessage.textContent = `Login process failed: ${error.message}`;
+                                 if(statusMessage) statusMessage.textContent = '';
+                                 loginButton.disabled = false; // Re-enable button on error
+                                 // Optionally sign out the user if backend verification fails?
+                                 // auth.signOut();
+                            }
+                        } else {
+                             console.error("Sign-in successful, but no user object found in result.");
+                             if(errorMessage) errorMessage.textContent = "Sign-in seemed successful, but user data is missing.";
+                             if(statusMessage) statusMessage.textContent = ''; // Clear status
+                             loginButton.disabled = false;
+                        }
+                    }).catch((error) => {
+                        console.error("Google Sign-In error:", error);
+                        if(errorMessage) errorMessage.textContent = `Login failed: ${error.message} (Code: ${error.code})`;
+                        if(statusMessage) statusMessage.textContent = ''; // Clear status
+                        loginButton.disabled = false; // Re-enable button on error
+
+                        // Suggest checking popup blocker for specific errors
+                        if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+                             alert("Popup blocked or closed. Please disable your popup blocker for this site and try again.");
+                        }
+                    });
+            });
+        } else {
+            console.error("Login button or Firebase Auth object not found. Cannot attach listener.");
+             if(statusMessage) statusMessage.textContent = "Login button initialization failed.";
+        }
+
+         // Optional: Check if user is already logged in
+         if (auth) {
+             auth.onAuthStateChanged(user => {
+                 if (user) {
+                     console.log("Auth state changed: User is already signed in.", user.email);
+                     // Avoid automatic redirect from /login page itself, let user click if needed
+                     // or handle redirection based on 'continue' param if desired.
+                 } else {
+                      console.log("Auth state changed: User is signed out.");
+                 }
+             });
+         }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Slipstream</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .page-link, .workspace-link {
+            text-decoration: none;
+            color: #333;
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .page-link:hover, .workspace-link:hover {
+            text-decoration: underline;
+        }
+        .create-button {
+            display: inline-block;
+            padding: 10px 15px;
+            background-color: #28a745;
+            color: white;
+            border-radius: 5px;
+            text-decoration: none;
+            transition: background-color 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .create-button:hover {
+            background-color: #218838;
+        }
+        .create-page-button {
+            display: inline-block;
+            padding: 4px 8px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 3px;
+            text-decoration: none;
+            transition: background-color 0.2s;
+            font-size: 12px;
+        }
+        .page-item, .workspace-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            padding: 8px 12px;
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+        .page-item-nested {
+            margin-left: 20px;
+            border-left: 2px solid #ddd;
+            padding-left: 10px;
+        }
+        .delete-button {
+            padding: 4px 8px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            flex-shrink: 0;
+            margin-left: 10px;
+        }
+        .delete-button:hover {
+            background-color: #c82333;
+        }
+        .action-buttons {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .page-icon {
+            margin-right: 8px;
+            color: #666;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .logout-button {
+            padding: 8px 12px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background-color 0.2s;
+        }
+        .logout-button:hover {
+            background-color: #5a6268;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            border-bottom-width: 1px;
+            padding-bottom: 0.5rem;
+        }
+        .manage-link {
+            font-size: 0.875rem;
+            color: #007bff;
+            text-decoration: none;
+        }
+        .manage-link:hover {
+            text-decoration: underline;
+        }
+        .shared-page-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            padding: 8px 12px;
+            background-color: #f0f8ff; /* Light blue background for differentiation */
+            border: 1px solid #d1e7fd;
+            border-radius: 4px;
+        }
+        .workspace-pages ul {
+            margin-top: 8px; /* Add some space between workspace item and its pages */
+            /* Remove default list styling */
+            list-style: none;
+            padding-left: 0;
+        }
+        .workspace-pages .page-item {
+            margin-left: 20px; /* Indent pages under workspace */
+            border-left: 2px solid #eee; /* Visual indicator */
+            padding-left: 10px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+
+    <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Dashboard</h1>
+            <div class="header-actions">
+                <span class="text-gray-600" th:text="${currentUserEmail}">user@example.com</span>
+                <form th:action="@{/logout}" method="post">
+                    <button type="submit" class="logout-button">
+                        <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div th:if="${errorMessage}" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline" th:text="${errorMessage}"></span>
+        </div>
+        <div th:if="${successMessage}" class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <span class="block sm:inline" th:text="${successMessage}"></span>
+        </div>
+
+        <!-- Create Workspace Form -->
+        <div class="mb-6 p-4 border rounded bg-gray-50">
+            <h2 class="text-xl font-semibold mb-3">Create New Workspace</h2>
+            <form th:action="@{/workspaces}" method="post" class="flex items-center space-x-3">
+                <input type="text" name="name" placeholder="Enter workspace name" required
+                       class="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                <button type="submit" class="create-button">
+                    <i class="fas fa-plus mr-1"></i> Create Workspace
+                </button>
+            </form>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-1 gap-6 mt-6">
+
+            <!-- Workspaces Section -->
+            <div>
+                <div class="section-header">
+                    <h2 class="text-xl font-semibold">My Workspaces</h2>
+                </div>
+                <div th:if="${#lists.isEmpty(workspaces)}">
+                    <p class="text-gray-500">You are not a member of any workspaces yet.</p>
+                </div>
+                <div th:unless="${#lists.isEmpty(workspaces)}">
+                    <ul>
+                        <li th:each="workspace : ${workspaces}" class="mb-4">
+                            <div th:id="'workspace-item-' + ${workspace.id}" class="workspace-item">
+                                <span th:text="${workspace.name}" class="workspace-link font-semibold">
+                                    Workspace Name
+                                </span>
+                                <div class="action-buttons">
+                                    <a th:href="@{'/view/pages/create?workspaceId=' + ${workspace.id}}" class="create-page-button mr-2">
+                                        <i class="fas fa-plus"></i> Create Page
+                                    </a>
+                                    <button th:if="${workspace.owner != null and currentUserEmail != null and workspace.owner.equals(currentUserEmail)}"
+                                            th:data-workspace-id="${workspace.id}"
+                                            th:data-workspace-name="${workspace.name}"
+                                            th:onclick="deleteWorkspace(this, event)"
+                                            class="delete-button">
+                                        <i class="fas fa-trash-alt"></i> Delete
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="workspace-pages">
+                                <ul th:if="${workspacePageTrees != null and workspacePageTrees[workspace.id] != null and !#lists.isEmpty(workspacePageTrees[workspace.id])}" class="workspace-page-list">
+                                    <th:block th:each="node : ${workspacePageTrees[workspace.id]}">
+                                        <th:block th:if="${node != null and node.page != null and (node.page.parentPageId == null or #strings.isEmpty(node.page.parentPageId))}">
+                                            <th:block th:insert="~{:: pageTree(${node}, 0)}" />
+                                        </th:block>
+                                    </th:block>
+                                </ul>
+                                <div th:if="${workspacePageTrees == null or workspacePageTrees[workspace.id] == null or #lists.isEmpty(workspacePageTrees[workspace.id])}" class="text-xs text-gray-500 pl-5 pt-1">
+                                    No pages in this workspace yet.
+                                </div>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Independent Pages Section -->
+            <div>
+                <div class="section-header">
+                    <h2 class="text-xl font-semibold">My Independent Pages</h2>
+                    <a th:href="@{/view/pages/create}" class="create-page-button">
+                        <i class="fas fa-plus"></i> Create Independent Page
+                    </a>
+                </div>
+                <div th:if="${#lists.isEmpty(independentPageNodes)}">
+                    <p class="text-gray-500">You don't have any independent pages yet.</p>
+                </div>
+                <div th:unless="${#lists.isEmpty(independentPageNodes)}">
+                    <ul>
+                        <th:block th:each="node : ${independentPageNodes}">
+                            <th:block th:if="${node != null and node.page != null and (node.page.parentPageId == null or #strings.isEmpty(node.page.parentPageId))}">
+                                <th:block th:insert="~{:: pageTree(${node}, 0)}" />
+                            </th:block>
+                        </th:block>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Shared Pages Section -->
+            <div class="mt-6">
+                <div class="section-header">
+                    <h2 class="text-xl font-semibold">Shared with Me</h2>
+                </div>
+                <div th:if="${#lists.isEmpty(sharedPages)}">
+                    <p class="text-gray-500">No pages have been shared directly with you yet.</p>
+                </div>
+                <div th:unless="${#lists.isEmpty(sharedPages)}">
+                    <ul>
+                        <li th:each="page : ${sharedPages}" class="mb-2">
+                            <div class="shared-page-item">
+                                <div class="flex items-center flex-grow">
+                                    <i th:class="${page.leaf} ? 'fas fa-file-alt page-icon' : 'fas fa-folder page-icon'"></i>
+                                    <a th:href="@{'/view/pages/' + ${page.pageId}}"
+                                       th:text="${page.title} ?: 'Untitled Page'"
+                                       class="page-link">
+                                        Shared Page Title
+                                    </a>
+                                    <span class="text-xs text-gray-500 ml-2" th:text="'(Owner: ' + ${page.owner} + ')'"></span>
+                                </div>
+                                <div class="action-buttons">
+                                </div>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <th:block th:fragment="pageTree(node, level)">
+        <li th:if="${node != null and node.page != null}">
+            <div th:id="'page-item-' + ${node.page.pageId}" class="page-item" th:style="${level > 0 ? 'margin-left:' + (level * 20) + 'px;' : ''}">
+                <div class="flex items-center flex-grow">
+                    <i th:class="${node.page.leaf} ? 'fas fa-file-alt page-icon' : 'fas fa-folder page-icon'"></i>
+                    <a th:href="@{'/view/pages/' + ${node.page.pageId}}"
+                       th:text="${node.page.title} ?: 'Untitled Page'"
+                       class="page-link">
+                        Page Title
+                    </a>
+                </div>
+                <div class="action-buttons">
+                    <button th:if="${node.page.owner != null and currentUserEmail != null and node.page.owner.equals(currentUserEmail)}"
+                            th:data-page-id="${node.page.pageId}"
+                            th:data-page-title="${node.page.title} ?: 'Untitled Page'"
+                            th:onclick="deletePage(this, event)"
+                            class="delete-button">
+                        <i class="fas fa-trash-alt"></i> Delete
+                    </button>
+                </div>
+            </div>
+            <ul th:if="${node.children != null and !#lists.isEmpty(node.children)}">
+                <th:block th:each="childNode : ${node.children}">
+                    <th:block th:insert="~{:: pageTree(${childNode}, ${level + 1})}" />
+                </th:block>
+            </ul>
+        </li>
+    </th:block>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+    <script>
+        async function fetchWithAuth(url, options = {}) {
+            const token = localStorage.getItem('firebaseIdToken');
+            const defaultHeaders = {
+                'Content-Type': 'application/json',
+            };
+            if (token) {
+                defaultHeaders['Authorization'] = `Bearer ${token}`;
+            }
+
+            const fetchOptions = {
+                ...options,
+                headers: {
+                    ...defaultHeaders,
+                    ...options.headers,
+                },
+            };
+
+            const response = await fetch(url, fetchOptions);
+
+            if (response.status === 401 || response.status === 403) {
+                console.error(`Authentication/Authorization error (${response.status}) for ${url}.`);
+                alert(`Error: Access denied (${response.status}). Please ensure you are logged in and have permission.`);
+                throw new Error(`Authentication/Authorization required (status ${response.status})`);
+            }
+
+            return response;
+        }
+
+        async function deletePage(buttonElement, event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const pageId = buttonElement.dataset.pageId;
+            const pageTitle = buttonElement.dataset.pageTitle;
+
+            if (confirm(`Are you sure you want to delete the page "${pageTitle}" and all its sub-pages? This action cannot be undone.`)) {
+                try {
+                    const response = await fetchWithAuth(`/api/pages/${pageId}`, {
+                        method: 'DELETE',
+                    });
+
+                    if (response.ok) {
+                        const deletedIds = await response.json();
+
+                        deletedIds.forEach(deletedId => {
+                            const listItem = document.getElementById(`page-item-${deletedId}`);
+                            if (listItem) {
+                                const parentLi = listItem.closest('li');
+                                if (parentLi) {
+                                    parentLi.remove();
+                                    console.log(`Removed page list item containing ${deletedId} from dashboard.`);
+                                } else {
+                                    listItem.remove();
+                                    console.log(`Removed page item div ${deletedId} from dashboard.`);
+                                }
+                            } else {
+                                console.log(`Page item ${deletedId} not found in the current view (might be a child not displayed or already removed).`);
+                            }
+                        });
+
+                        alert(`Page "${pageTitle}" and its sub-pages deleted successfully.`);
+
+                    } else {
+                        let errorReason = `Status: ${response.status}`;
+                        try {
+                            const errorResult = await response.json();
+                            errorReason = errorResult.error || errorResult.message || errorReason;
+                        } catch (e) {
+                            errorReason = await response.text() || errorReason;
+                        }
+                        alert(`Failed to delete page "${pageTitle}". Reason: ${errorReason}`);
+                    }
+                } catch (error) {
+                    console.error('Error during deletePage processing:', error);
+                    if (!error.message.includes('Authentication required') && !error.message.includes('Authorization required')) {
+                        alert(`An error occurred while deleting the page "${pageTitle}".`);
+                    }
+                }
+            }
+        }
+
+        async function deleteWorkspace(buttonElement, event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const workspaceId = buttonElement.dataset.workspaceId;
+            const workspaceName = buttonElement.dataset.workspaceName;
+
+            if (confirm(`Are you sure you want to delete the workspace "${workspaceName}" and ALL its pages? This action cannot be undone.`)) {
+                try {
+                    const response = await fetchWithAuth(`/workspaces/${workspaceId}`, {
+                        method: 'DELETE',
+                    });
+
+                    if (response.ok) {
+                        let message = `Workspace "${workspaceName}" deleted successfully.`;
+                        try {
+                            const result = await response.json();
+                            if (result && result.message) message = result.message;
+                        } catch (jsonError) {
+                            console.log("Workspace delete response was OK but not JSON:", response.statusText);
+                        }
+
+                        const listItem = document.getElementById(`workspace-item-${workspaceId}`);
+                        if (listItem) {
+                            listItem.remove();
+                        }
+                        alert(message);
+
+                    } else {
+                        let errorReason = `Status: ${response.status}`;
+                        try {
+                            const errorResult = await response.json();
+                            errorReason = errorResult.error || errorResult.message || errorReason;
+                        } catch (e) {
+                            errorReason = await response.text() || errorReason;
+                        }
+                        alert(`Failed to delete workspace "${workspaceName}". Reason: ${errorReason}`);
+                    }
+                } catch (error) {
+                    console.error('Error during deleteWorkspace processing:', error);
+                    if (!error.message.includes('Authentication required') && !error.message.includes('Authorization required')) {
+                        alert(`An error occurred while deleting the workspace "${workspaceName}".`);
+                    }
+                }
+            }
+        }
+
+        // --- Add Member Functionality ---
+        document.querySelectorAll('.add-member-button').forEach(button => {
+            button.addEventListener('click', async function(event) {
+                event.preventDefault();
+                const workspaceId = this.dataset.workspaceId;
+                const memberEmail = prompt(`Enter the email of the member to add to workspace (ID: ${workspaceId}):`);
+
+                if (memberEmail && workspaceId) {
+                    console.log(`Attempting to add member: ${memberEmail} to workspace: ${workspaceId}`);
+                    try {
+                        const response = await fetchWithAuth(`/workspaces/${workspaceId}/members`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ email: memberEmail.trim() })
+                        });
+
+                        if (response.ok) {
+                            let message = `Member "${memberEmail}" added successfully.`;
+                            try {
+                                const result = await response.json();
+                                if (result && result.message) message = result.message;
+                            } catch (jsonError) {
+                                console.log("Add member response was OK but not JSON:", response.statusText);
+                            }
+                            alert(message);
+                        } else {
+                            let errorReason = `Status: ${response.status}`;
+                            try {
+                                const errorResult = await response.json();
+                                errorReason = errorResult.error || errorResult.message || errorReason;
+                            } catch (e) {
+                                errorReason = await response.text() || errorReason;
+                            }
+                            alert(`Failed to add member "${memberEmail}". Reason: ${errorReason}`);
+                        }
+                    } catch (error) {
+                        console.error('Error during addMember processing:', error);
+                        if (!error.message.includes('Authentication required') && !error.message.includes('Authorization required')) {
+                            alert(`An error occurred while adding the member "${memberEmail}".`);
+                        }
+                    }
+                } else {
+                    if (!workspaceId) {
+                        alert("Could not determine the workspace ID for this button.");
+                    } else if (!memberEmail) {
+                        console.log("Add member cancelled.");
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

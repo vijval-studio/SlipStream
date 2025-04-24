@@ -1,0 +1,213 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  #editor-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+  .block {
+    position: relative;
+    margin-bottom: 5px;
+    transition: background-color 0.1s;
+  }
+  .block:hover {
+    background-color: rgba(55, 53, 47, 0.08);
+    border-radius: 3px;
+  }
+  .block-content {
+    width: 100%;
+    outline: none;
+    padding: 3px 2px;
+    min-height: 30px;
+    white-space: pre-wrap;
+  }
+  .block-content:empty:before {
+    content: 'Type / for commands...';
+    color: #888;
+    opacity: 0.5;
+  }
+  .block-content.hidden {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .markdown-rendered {
+    width: 100%;
+    padding: 3px 2px;
+    cursor: text;
+    min-height: 30px;
+  }
+  .markdown-rendered img {
+    max-width: 100%;
+    height: auto;
+  }
+  .block-placeholder {
+    position: absolute;
+    left: -30px;
+    color: #888;
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .block:hover .block-placeholder {
+    opacity: 0.5;
+  }
+  .block.active .block-placeholder {
+    opacity: 1;
+  }
+  .command-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 10;
+    min-width: 200px;
+    border-radius: 4px;
+    display: none;
+    overflow: hidden;
+  }
+  .command-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s;
+  }
+  .command-item:hover {
+    background-color: #f0f0f0;
+  }
+  .command-item-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #888;
+  }
+  .command-item-text {
+    display: flex;
+    flex-direction: column;
+  }
+  .command-item-title {
+    font-weight: 500;
+  }
+  .command-item-description {
+    font-size: 12px;
+    color: #888;
+  }
+  #save-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
+  .code-block {
+    background-color: rgba(135, 131, 120, 0.15);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    padding: 16px;
+    border-radius: 4px;
+    tab-size: 2;
+  }
+  .markdown-rendered.code-block pre {
+    margin: 0;
+  }
+  .markdown-rendered.code-block code {
+    background: transparent;
+    padding: 0;
+  }
+  .todo-item {
+    display: flex;
+    align-items: flex-start;
+    margin: 0;
+    padding: 0;
+  }
+  .todo-checkbox {
+    margin-right: 8px;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .heading-1 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    margin-top: 32px;
+    margin-bottom: 4px;
+  }
+  .heading-2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 24px;
+    margin-bottom: 4px;
+  }
+  .quote-block {
+    border-left: 3px solid rgba(55, 53, 47, 0.16);
+    padding-left: 14px;
+    font-style: italic;
+    color: rgba(55, 53, 47, 0.8);
+  }
+  .markdown-rendered h1, .markdown-rendered h2 {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  /* Added rules for rendered headings */
+  .markdown-rendered h1 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    margin-top: 32px;
+    margin-bottom: 4px;
+  }
+  .markdown-rendered h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 24px;
+    margin-bottom: 4px;
+  }
+  .markdown-rendered ul {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 24px;
+  }
+  .markdown-rendered blockquote {
+    margin: 0;
+    padding-left: 14px;
+    border-left: 3px solid rgba(55, 53, 47, 0.16);
+    color: rgba(55, 53, 47, 0.8);
+  }
+  .markdown-rendered pre {
+    background-color: rgba(135, 131, 120, 0.15);
+    padding: 16px;
+    border-radius: 4px;
+    margin: 0;
+  }
+  .markdown-rendered code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    background-color: rgba(135, 131, 120, 0.15);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 85%;
+  }
+  .markdown-rendered pre > code {
+    background-color: transparent;
+    padding: 0;
+  }
+  .markdown-rendered strong {
+    font-weight: 600;
+  }
+  .markdown-rendered em {
+    font-style: italic;
+  }
+  .markdown-rendered p {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .markdown-rendered input[type="checkbox"] {
+    margin-right: 6px;
+  }
+  
