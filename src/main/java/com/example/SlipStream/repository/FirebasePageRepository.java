@@ -284,13 +284,14 @@ public class FirebasePageRepository implements PageRepository {
         Firestore firestore = FirestoreClient.getFirestore();
         DocumentReference docRef = firestore.collection(COLLECTION_NAME).document(pageId);
 
-        FieldPath fieldPath = FieldPath.of("sharingInfo", userEmail);
+        // Use dot notation for nested fields in the map key
+        String fieldPathString = "sharingInfo." + userEmail;
 
         Map<String, Object> updates = new HashMap<>();
-        updates.put(fieldPath, accessLevel);
+        updates.put(fieldPathString, accessLevel); // Use the string path as the key
         updates.put("lastUpdated", new Date());
 
-        logger.info("Updating sharing for page {}: Setting sharingInfo.'{}' = {}", pageId, userEmail, accessLevel);
+        logger.info("Updating sharing for page {}: Setting {} = {}", pageId, fieldPathString, accessLevel);
         ApiFuture<WriteResult> future = docRef.update(updates);
 
         try {
@@ -315,9 +316,11 @@ public class FirebasePageRepository implements PageRepository {
         Firestore firestore = FirestoreClient.getFirestore();
         DocumentReference docRef = firestore.collection(COLLECTION_NAME).document(pageId);
 
-        FieldPath fieldPath = FieldPath.of("sharingInfo", userEmail);
+        // Use dot notation for nested fields in the map key
+        String fieldPathString = "sharingInfo." + userEmail;
+
         Map<String, Object> updates = new HashMap<>();
-        updates.put(fieldPath, FieldValue.delete());
+        updates.put(fieldPathString, FieldValue.delete()); // Use the string path as the key
         updates.put("lastUpdated", new Date());
 
         logger.info("Attempting to remove user {} from sharingInfo map for page {}", userEmail, pageId);
